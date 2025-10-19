@@ -3,8 +3,6 @@
 import { useBalanceOfConnectedAccount, useTotalSupply } from '@jpyc/sdk-react';
 import { useAccount } from 'wagmi';
 
-// JPYC contract address on Sepolia testnet
-
 export function JPYCInfo() {
   const { isConnected, chain } = useAccount();
 
