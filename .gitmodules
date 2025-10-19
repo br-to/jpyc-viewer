@@ -1,4 +1,0 @@
-[submodule "external/jpyc-sdk"]
-	path = external/jpyc-sdk
-	url = https://github.com/jcam1/sdks.git
-	branch = develop
