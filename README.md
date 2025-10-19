@@ -83,11 +83,6 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id_here
 NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS=0xd3eF95d29A198868241FE374A999fc25F6152253
 ```
 
-**WalletConnectプロジェクトIDの取得方法:**
-1. [WalletConnect Cloud](https://cloud.walletconnect.com)にアクセス
-2. アカウント作成・ログイン
-3. 新しいプロジェクトを作成
-4. プロジェクトIDをコピー
 
 ### 5. 開発サーバーの起動
 
@@ -102,42 +97,7 @@ npm run dev
 1. **ウォレット接続**: 「Connect Wallet」ボタンからウォレットを接続
 2. **ネットワーク確認**: Sepoliaテストネットに接続されていることを確認
 3. **残高確認**: JPYCトークンの残高と詳細情報が自動で表示されます
-
-## 🔧 技術的な注意点
-
-### JPYC SDK の Decimals 問題
-
-JPYC React SDKはdecimals=18を前提としていますが、実際のJPYCトークン（Sepolia）はdecimals=6です。このアプリケーションでは以下の方法で解決しています：
-
-```typescript
-// SDKの結果を12乗（18-6=12）で補正
-const correctedBalance = Number(balance.data) * Math.pow(10, 12);
-```
-
-### コントラクトアドレス
-
-- **デフォルトSDKアドレス**: `0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB` (JPYC Prepaid, decimals=18)
-- **実際のJPYCアドレス**: `0xd3eF95d29A198868241FE374A999fc25F6152253` (JPYC, decimals=6)
-
-## 📁 プロジェクト構造
-
-```
-jpyc-viewer/
-├── src/
-│   ├── app/                 # Next.js App Router
-│   │   ├── layout.tsx       # ルートレイアウト
-│   │   ├── page.tsx         # ホームページ
-│   │   └── providers.tsx    # Providerラップ
-│   ├── components/
-│   │   └── JPYCInfo.tsx     # JPYC情報表示コンポーネント
-│   └── lib/
-│       └── config.ts        # wagmi設定
-├── external/
-│   └── jpyc-sdk/           # JPYC SDK（git submodule）
-├── .env.local              # 環境変数
-├── .gitmodules             # submodule設定
-└── package.json
-```
+4. 
 
 ## 🚦 利用可能なスクリプト
 
@@ -167,5 +127,4 @@ git submodule foreach git pull origin develop
 - JPYCトークンがウォレットに実際に存在するか確認
 
 ### ウォレット接続できない
-- WalletConnectプロジェクトIDが正しく設定されているか確認
 - ウォレットアプリが最新版か確認
