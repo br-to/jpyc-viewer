@@ -1,14 +1,11 @@
 'use client';
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { JPYCInfo } from '../components/JPYCInfo';
 
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const { data: balance } = useBalance({
-    address,
-  });
 
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
@@ -29,12 +26,6 @@ export default function Home() {
                   <p className="text-sm break-all">
                     <strong>アドレス:</strong> {address}
                   </p>
-                  {balance && (
-                    <p className="text-sm">
-                      <strong>残高:</strong> {balance.formatted}{' '}
-                      {balance.symbol}
-                    </p>
-                  )}
                 </div>
               </div>
               <JPYCInfo />
