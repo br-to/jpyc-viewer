@@ -7,10 +7,8 @@ export function JPYCInfo() {
   const { isConnected, chain } = useAccount();
 
   // JPYC SDK hooks
-  const balance = useBalanceOfConnectedAccount({
-    skip: false,
-  });
-  const totalSupply = useTotalSupply({ skip: false });
+  const balance = useBalanceOfConnectedAccount({});
+  const totalSupply = useTotalSupply({});
 
   if (!isConnected) {
     return null;
