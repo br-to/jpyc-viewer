@@ -1,5 +1,3 @@
-'use client';
-
 import { useBalanceOfConnectedAccount, useTotalSupply } from '@jpyc/sdk-react';
 import { useAccount } from 'wagmi';
 
