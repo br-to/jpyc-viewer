@@ -48,7 +48,7 @@ git submodule update --init --recursive
 ### 2. 依存関係のインストール
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 3. JPYC SDK のセットアップ
@@ -59,11 +59,8 @@ JPYC SDKはgit submoduleとして管理されています：
 # submoduleの初期化（クローン時に--recurse-submodulesを使わなかった場合）
 git submodule update --init --recursive
 
-# JPYC SDKのビルド
-cd external/jpyc-sdk/packages/react
-npm install
-npm run compile
-cd ../../../../
+# JPYC SDKのビルドと依存関係のインストール
+pnpm --filter @jpyc/sdk-react compile && pnpm install
 ```
 
 **submoduleの更新:**
@@ -87,10 +84,10 @@ NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS=0xd3eF95d29A198868241FE374A999fc25F6152253
 ### 5. 開発サーバーの起動
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-[http://localhost:3000](http://localhost:3000) でアプリケーションが起動します。
+[http://localhost:3000](http://localhost:3000) でアプリケーションが起動します.
 
 ## 🎯 使用方法
 
@@ -101,11 +98,11 @@ npm run dev
 ## 🚦 利用可能なスクリプト
 
 ```bash
-npm run dev          # 開発サーバー起動
-npm run build        # プロダクションビルド
-npm run start        # プロダクションサーバー起動
-npm run lint         # Biome Lint実行
-npm run format       # Prettierでフォーマット
+pnpm dev             # 開発サーバー起動
+pnpm build           # プロダクションビルド
+pnpm start           # プロダクションサーバー起動
+pnpm lint            # Biome Lint実行
+pnpm format          # Prettierでフォーマット
 ```
 
 ## 🐛 よくある問題
