@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   experimental: {
     reactCompiler: true,
   },
-  transpilePackages: ['@jpyc/sdk-react'],
 };
 
 export default nextConfig;
