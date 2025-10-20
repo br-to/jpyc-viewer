@@ -1,0 +1,5 @@
+packages:
+  # メインアプリケーション
+  - '.'
+  # サブモジュール内のパッケージも含める
+  - 'external/jpyc-sdk/packages/react/'
