@@ -29,7 +29,6 @@ SepoliaテストネットワークでJPYCトークンの残高と情報を表示
 
 - Node.js 18.x 以上
 - SepoliaテストネットワークでJPYCトークンを保有するウォレット
-- WalletConnectプロジェクトID
 
 ## ⚙️ セットアップ
 
