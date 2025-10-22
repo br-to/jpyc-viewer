@@ -74,9 +74,6 @@ git submodule update --remote
 ```env
 # WalletConnect プロジェクトID （任意）
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id_here
-
-# JPYC コントラクトアドレス（Sepolia）
-NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS=0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB
 ```
 
 
