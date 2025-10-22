@@ -72,11 +72,11 @@ git submodule update --remote
 `.env.local` ファイルを作成し、以下を設定：
 
 ```env
-# WalletConnect プロジェクトID （必須）
+# WalletConnect プロジェクトID （任意）
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id_here
 
 # JPYC コントラクトアドレス（Sepolia）
-NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS=0xd3eF95d29A198868241FE374A999fc25F6152253
+NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS=0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB
 ```
 
 
