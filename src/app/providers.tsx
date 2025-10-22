@@ -8,8 +8,6 @@ import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const queryClient = new QueryClient();
-const JPYC_ADDRESS = process.env
-  .NEXT_PUBLIC_JPYC_CONTRACT_ADDRESS as `0x${string}`;
 
 const config = getDefaultConfig({
   appName: 'JPYC Sample Viewer',
@@ -24,9 +22,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
           <JpycSdkProvider
-            env="local"
-            contractType="jpyc"
-            localContractAddress={JPYC_ADDRESS}
+            env="prod"
+            contractType="jpycPrepaid"
+            // SDKがJPYC_PREPAID_PROXY_ADDRESSを自動選択するため、undefinedを指定
+            localContractAddress={undefined}
           >
             {children}
           </JpycSdkProvider>
