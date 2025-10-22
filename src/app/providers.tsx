@@ -21,10 +21,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
+          {/* // env="prod"の時SDKが自動的にJPYC_PREPAID_PROXY_ADDRESS (0x431D5dfF...)を選択 */}
           <JpycSdkProvider
             env="prod"
             contractType="jpycPrepaid"
-            // SDKがJPYC_PREPAID_PROXY_ADDRESSを自動選択するため、undefinedを指定
             localContractAddress={undefined}
           >
             {children}
