@@ -1,26 +1,27 @@
-import { useBalanceOfConnectedAccount, useTotalSupply } from '@jpyc/sdk-react';
+import { useBalanceOf, useTotalSupply } from '@jpyc/sdk-react';
 import { useAccount } from 'wagmi';
 
 export function JPYCInfo() {
-  const { isConnected, chain } = useAccount();
+  const { isConnected, chain, address } = useAccount();
 
   // JPYC SDK hooks
-  const balance = useBalanceOfConnectedAccount({});
-  const totalSupply = useTotalSupply({});
+  const {
+    data: balanceData,
+    isPending: isBalanceLoading,
+    error: balanceError,
+  } = useBalanceOf({
+    account: address as `0x${string}`,
+  });
+  const totalSupplyResult = useTotalSupply({});
+  const totalSupplyData = totalSupplyResult?.data;
+  const isTotalSupplyLoading = totalSupplyResult?.isPending || false;
 
-  if (!isConnected) {
+  if (!isConnected || !address) {
     return null;
   }
-  // SDKの結果を12乗で補正
-  const correctedBalance = balance?.data
-    ? (Number(balance.data) * 10 ** 12).toString()
-    : '0';
 
-  const formattedTotalSupply = totalSupply?.data
-    ? (Number(totalSupply.data) * 10 ** 12).toString()
-    : '0';
-  const isBalanceLoading = !balance || balance?.isPending || false;
-  const isTotalSupplyLoading = totalSupply?.isPending || false;
+  const formattedBalance = parseFloat(balanceData || '0');
+  const formattedTotalSupply = parseFloat(totalSupplyData || '0');
 
   return (
     <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-lg border border-blue-200 dark:border-blue-800 max-w-md">
@@ -38,12 +39,15 @@ export function JPYCInfo() {
           <strong>残高:</strong>{' '}
           {isBalanceLoading ? (
             <span className="text-gray-500">読み込み中...</span>
-          ) : balance?.error ? (
-            <span className="text-red-500" title={balance.error.message}>
-              エラー: {balance.error.message}
+          ) : balanceError ? (
+            <span className="text-red-500" title={balanceError.message}>
+              エラー: {balanceError.message}
             </span>
           ) : (
-            `${correctedBalance} JPYC`
+            `${formattedBalance.toLocaleString('ja-JP', {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 6,
+            })} JPYC`
           )}
         </p>
         <p className="text-sm">
@@ -51,7 +55,10 @@ export function JPYCInfo() {
           {isTotalSupplyLoading ? (
             <span className="text-gray-500">読み込み中...</span>
           ) : (
-            `${formattedTotalSupply} JPYC`
+            `${formattedTotalSupply.toLocaleString('ja-JP', {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 6,
+            })} JPYC`
           )}
         </p>
         <p className="text-sm">
