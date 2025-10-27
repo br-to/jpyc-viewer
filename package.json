@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "pnpm --filter @jpyc/sdk-react compile && pnpm install && next build --turbopack",
+    "build": "pnpm --filter @jpyc/sdk-react compile && pnpm --filter @jpyc/sdk-core compile && pnpm install && next build --turbopack",
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write"
