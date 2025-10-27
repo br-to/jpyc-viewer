@@ -1,21 +1,15 @@
 'use client';
 
 import { useAccount } from 'wagmi';
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useBalanceOf } from '@jpyc/sdk-react';
 import { useJPYCPayment } from '@/hooks/useJPYCPayment';
-import {
-  CheckoutPaymentSelector,
-  type CheckoutPaymentMethod,
-} from '@/components/CheckoutPaymentSelector';
+import { CheckoutPaymentSelector } from '@/components/CheckoutPaymentSelector';
 
 export default function PaymentPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<CheckoutPaymentMethod>();
 
   // JPYC残高を取得
   const {
@@ -49,56 +43,64 @@ export default function PaymentPage() {
     total: 6600,
   };
 
-  // 送金成功後に注文完了画面に遷移
-  useEffect(() => {
-    if (isPaymentSuccess && txHash) {
-      router.push(
-        `/payment/success?txHash=${txHash}&total=${orderSummary.total}`
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPaymentSuccess, txHash, router]);
+  // 送金成功後に注文完了画面に遷移（TanStack Queryのパターン）
+  if (isPaymentSuccess && txHash) {
+    router.push(
+      `/payment/success?txHash=${txHash}&total=${orderSummary.total}`
+    );
+  }
 
   const canProceedPayment = () => {
-    if (!selectedPaymentMethod) return false;
-    if (selectedPaymentMethod === 'jpyc') {
-      if (!isConnected) return false;
-      if (isBalanceLoading || isPaymentProcessing || isConfirming) return false;
-      if (balanceError || jpycBalance === null) return false;
-      if (jpycBalance < orderSummary.total) return false;
-    }
+    if (!isConnected) return false;
+    if (isBalanceLoading || isPaymentProcessing || isConfirming) return false;
+    if (balanceError || jpycBalance === null) return false;
+    if (jpycBalance < orderSummary.total) return false;
     return true;
   };
 
   const getButtonText = () => {
-    if (!selectedPaymentMethod) return '支払い方法を選択してください';
-    if (selectedPaymentMethod === 'jpyc') {
-      if (!isConnected) return 'ウォレットを接続してください';
-      if (isBalanceLoading) return '残高確認中...';
-
-      // 決済処理中
-      if (isPaymentProcessing) return '署名処理中...';
-
-      // トランザクション承認待ち
-      if (isConfirming) return 'トランザクション処理中...';
-
-      if (jpycBalance !== null && jpycBalance < orderSummary.total)
-        return '残高不足';
-    }
+    if (!isConnected) return 'ウォレットを接続してください';
+    if (isBalanceLoading) return '残高確認中...';
+    if (isPaymentProcessing) return '署名処理中...';
+    if (isConfirming) return 'トランザクション処理中...';
+    if (jpycBalance !== null && jpycBalance < orderSummary.total)
+      return '残高不足';
     return 'お支払いを確定する';
   };
 
-  // 支払い処理
+  // 支払い処理（JPYC決済のみ実装）
   const handlePayment = () => {
     if (!canProceedPayment()) return;
-
-    if (selectedPaymentMethod === 'jpyc') {
-      executePayment(orderSummary);
-    }
+    executePayment(orderSummary);
   };
 
   return (
     <div className="font-sans min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8">
+      {/* ローディングオーバーレイ */}
+      {(isPaymentProcessing || isConfirming) && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-2xl max-w-md mx-4">
+            <div className="flex flex-col items-center gap-4">
+              {/* スピナー */}
+              <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" />
+
+              {/* メッセージ */}
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+                  {isPaymentProcessing && '署名を作成中...'}
+                  {isConfirming && 'トランザクション処理中...'}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {isPaymentProcessing && 'ウォレットで署名を承認してください'}
+                  {isConfirming &&
+                    'ブロックチェーン上で処理されています。しばらくお待ちください。'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto">
         {/* ヘッダー */}
         <div className="mb-8">
@@ -143,8 +145,7 @@ export default function PaymentPage() {
             {/* 支払い方法選択 */}
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
               <CheckoutPaymentSelector
-                onSelect={setSelectedPaymentMethod}
-                selectedMethod={selectedPaymentMethod}
+                onSelect={handlePayment}
                 jpycBalance={jpycBalance}
                 isBalanceLoading={isBalanceLoading}
                 balanceError={balanceError}

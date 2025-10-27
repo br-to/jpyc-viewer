@@ -29,14 +29,9 @@ const paymentOptions: PaymentOption[] = [
  */
 interface CheckoutPaymentSelectorProps {
   /**
-   * 支払い方法が選択されたときに呼び出されるコールバック
-   * @param method 選択された支払い方法
+   * JPYC支払いが選択されたときに呼び出されるコールバック
    */
-  onSelect: (method: CheckoutPaymentMethod) => void;
-  /**
-   * 現在選択されている支払い方法
-   */
-  selectedMethod?: CheckoutPaymentMethod;
+  onSelect: () => void;
   /**
    * JPYCの残高（nullの場合は未取得）
    */
@@ -57,7 +52,6 @@ interface CheckoutPaymentSelectorProps {
 
 export function CheckoutPaymentSelector({
   onSelect,
-  selectedMethod,
   jpycBalance,
   isBalanceLoading = false,
   balanceError,
@@ -69,7 +63,6 @@ export function CheckoutPaymentSelector({
   const formattedBalance = jpycBalance ?? 0;
 
   const hasInsufficientBalance =
-    selectedMethod === 'jpyc' &&
     isConnected &&
     !isBalanceLoading &&
     !balanceError &&
@@ -82,23 +75,22 @@ export function CheckoutPaymentSelector({
 
       <div className="space-y-3">
         {paymentOptions.map((option) => {
-          const isSelected = selectedMethod === option.id;
           const isDisabled = option.disabled;
 
           return (
             <button
               key={option.id}
               type="button"
-              onClick={() => !isDisabled && onSelect(option.id)}
+              onClick={() => !isDisabled && option.id === 'jpyc' && onSelect()}
               disabled={isDisabled}
               className={`
                 w-full p-4 rounded-lg border-2 transition-all
                 flex items-start gap-4 text-left
                 ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 cursor-pointer'
-                    : isDisabled
-                      ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed opacity-60'
+                  isDisabled
+                    ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed opacity-60'
+                    : option.id === 'jpyc'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 cursor-pointer'
                       : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-700 cursor-pointer'
                 }
               `}
@@ -109,13 +101,13 @@ export function CheckoutPaymentSelector({
                   className={`
                   w-5 h-5 rounded-full border-2 flex items-center justify-center
                   ${
-                    isSelected
+                    option.id === 'jpyc'
                       ? 'border-blue-500 bg-blue-500'
                       : 'border-gray-300 dark:border-gray-600'
                   }
                 `}
                 >
-                  {isSelected && (
+                  {option.id === 'jpyc' && (
                     <div className="w-2 h-2 bg-white rounded-full" />
                   )}
                 </div>
@@ -150,7 +142,7 @@ export function CheckoutPaymentSelector({
                 </p>
 
                 {/* JPYC選択時 */}
-                {option.id === 'jpyc' && isSelected && (
+                {option.id === 'jpyc' && (
                   <>
                     {/* ウォレット未接続の場合 */}
                     {!isConnected && (
