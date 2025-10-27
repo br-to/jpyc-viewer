@@ -3,3 +3,4 @@ packages:
   - '.'
   # サブモジュール内のパッケージも含める
   - 'external/jpyc-sdk/packages/react/'
+  - 'external/jpyc-sdk/packages/core/'
