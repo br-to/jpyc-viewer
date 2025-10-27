@@ -7,7 +7,6 @@ import { Suspense } from 'react';
 function SuccessContent() {
   const searchParams = useSearchParams();
   const txHash = searchParams.get('txHash');
-  const total = searchParams.get('total');
 
   return (
     <div className="font-sans min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8 flex items-center justify-center">
@@ -42,37 +41,24 @@ function SuccessContent() {
 
           {/* 注文情報 */}
           <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-6 mb-8">
-            <div className="space-y-4">
-              {total && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">
-                    お支払い金額
-                  </span>
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    ¥{Number(total).toLocaleString('ja-JP')}
-                  </span>
-                </div>
-              )}
-
-              {txHash && (
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    トランザクションハッシュ
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 break-all font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded">
-                    {txHash}
-                  </p>
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline mt-2 inline-block"
-                  >
-                    Etherscanで確認する →
-                  </a>
-                </div>
-              )}
-            </div>
+            {txHash && (
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  トランザクションハッシュ
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 break-all font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                  {txHash}
+                </p>
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline mt-2 inline-block"
+                >
+                  Etherscanで確認する →
+                </a>
+              </div>
+            )}
           </div>
 
           {/* 次のアクション */}

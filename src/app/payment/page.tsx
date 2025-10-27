@@ -45,9 +45,7 @@ export default function PaymentPage() {
 
   // 送金成功後に注文完了画面に遷移（TanStack Queryのパターン）
   if (isPaymentSuccess && txHash) {
-    router.push(
-      `/payment/success?txHash=${txHash}&total=${orderSummary.total}`
-    );
+    router.push(`/complete?txHash=${txHash}`);
   }
 
   const canProceedPayment = () => {
