@@ -59,7 +59,8 @@ export function useSignTransferAuthorization() {
       const _validAfter = validAfter ?? now - 60; // 60秒前から有効
       const _validBefore = validBefore ?? now + 3600; // 1時間後まで有効
 
-      // 2. JPYCコントラクトアドレス（Sepolia）
+      // 2. JPYCコントラクトアドレス（JPYC Prepaid）
+      // NOTE: これはJPYC Prepaidのアドレスです、通常のJPYCとは異なるコントラクトアドレスを使用しています
       const jpycAddress = '0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB';
 
       // 3. EIP-712のTypedDataを構築
