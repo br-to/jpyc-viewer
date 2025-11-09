@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   createPublicClient,
@@ -9,6 +10,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
+import { fromUnixTime, isAfter } from 'date-fns';
 
 /**
  * POST /api/subscriptions/execute-pending
@@ -123,8 +125,8 @@ export async function POST(request: NextRequest) {
       }
 
       // validBefore をチェック（3日過ぎていたらスキップ）
-      const validBeforeDate = new Date(Number(payment.validBefore) * 1000);
-      if (now > validBeforeDate) {
+      const validBeforeDate = fromUnixTime(Number(payment.validBefore));
+      if (isAfter(now, validBeforeDate)) {
         console.log(`スキップ: validBefore過ぎ (${payment.id})`);
         await prisma.subscriptionPayment.update({
           where: { id: payment.id },
@@ -172,7 +174,8 @@ export async function POST(request: NextRequest) {
 
         if (receipt.status === 'success') {
           // 成功: ステータスを更新
-          await prisma.$transaction(async (tx) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await prisma.$transaction(async (tx: any) => {
             await tx.subscriptionPayment.update({
               where: { id: payment.id },
               data: {

@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { keccak256, toHex } from 'viem';
 import crypto from 'crypto';
+import { addHours, getUnixTime } from 'date-fns';
 
 /**
  * POST /api/subscriptions/nonces
@@ -49,13 +51,16 @@ export async function POST(request: NextRequest) {
     const nonces = [];
 
     for (let i = 0; i < months; i++) {
-      // 決済予定日を計算（テスト用: 1時間前から開始）
-      const scheduledDate = new Date();
-      scheduledDate.setHours(scheduledDate.getHours() - 1 + i); // 1時間前、現在、1時間後...
-      scheduledDate.setMinutes(0, 0, 0);
+      // 決済予定日を計算
+      // テスト用: 1時間前から開始（本番では addMonths を使う）
+      const now = new Date();
+      const scheduledDate = addHours(now, -1 + i);
+
+      // 本番用（コメントアウト）:
+      // const scheduledDate = startOfMonth(addMonths(now, i + 1));
 
       // Unix timestamp（秒）
-      const validAfter = Math.floor(scheduledDate.getTime() / 1000);
+      const validAfter = getUnixTime(scheduledDate);
       const validBefore = validAfter + 3 * 24 * 60 * 60; // 3日間有効
 
       // nonceを一意に生成
