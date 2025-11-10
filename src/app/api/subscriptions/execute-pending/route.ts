@@ -33,14 +33,62 @@ export async function POST(request: NextRequest) {
 
     console.log('=== Cron実行開始 ===');
 
-    // 1. 実行対象の支払いを取得
+    // 1. 実行対象の支払いを取得（バッチ処理: 最大100件）
+    // 並行実行防止: processingステータスを付けて、他のインスタンスが処理しないようにする
     const now = new Date();
+    const BATCH_SIZE = 100;
+
+    // まずpendingのIDだけを取得してロック
+    // processingのまま1時間以上経過したものも回復対象に含める
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const pendingIds = await prisma.subscriptionPayment.findMany({
+      where: {
+        OR: [
+          {
+            status: 'pending',
+            scheduledDate: { lte: now },
+          },
+          {
+            status: 'processing',
+            updatedAt: { lte: oneHourAgo }, // 1時間以上前にprocessingになったもの
+          },
+        ],
+      },
+      select: { id: true },
+      orderBy: {
+        scheduledDate: 'asc',
+      },
+      take: BATCH_SIZE,
+    });
+
+    if (pendingIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No pending payments to execute',
+        executed: 0,
+      });
+    }
+
+    // ロック: pending/古いprocessing → processing に一括更新（並行実行防止）
+    const idList = pendingIds.map((p: { id: string }) => p.id);
+
+    await prisma.subscriptionPayment.updateMany({
+      where: {
+        id: { in: idList },
+        OR: [
+          { status: 'pending' },
+          { status: 'processing', updatedAt: { lte: oneHourAgo } },
+        ],
+      },
+      data: { status: 'processing' },
+    });
+
+    // 実際に更新されたpaymentを取得（他のインスタンスが先に処理した場合は除外される）
     const pendingPayments = await prisma.subscriptionPayment.findMany({
       where: {
-        status: 'pending',
-        scheduledDate: {
-          lte: now, // 決済予定日が過去
-        },
+        id: { in: idList },
+        status: 'processing', // processingになったものだけ
       },
       include: {
         subscription: true,
@@ -50,15 +98,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log(`実行対象の支払い: ${pendingPayments.length}件`);
-
-    if (pendingPayments.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: 'No pending payments to execute',
-        executed: 0,
-      });
-    }
+    console.log(`実行対象の支払い（ロック済み）: ${pendingPayments.length}件`);
 
     // 2. Relayerウォレットの準備
     const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY;
@@ -139,12 +179,6 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // ステータスを「処理中」に変更
-        await prisma.subscriptionPayment.update({
-          where: { id: payment.id },
-          data: { status: 'processing' },
-        });
-
         console.log(
           `決済実行中: ${payment.id} (${subscription.customerAddress} → ${subscription.merchantAddress})`
         );
