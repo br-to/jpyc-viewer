@@ -8,10 +8,10 @@ import { prisma } from '@/lib/prisma';
  */
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const subscription = await prisma.subscription.findUnique({
       where: { id },
@@ -33,7 +33,7 @@ export async function GET(
 
     return NextResponse.json({ subscription }, { status: 200 });
   } catch (error) {
-    console.error(`Error fetching subscription ${params.id}:`, error);
+    console.error('Error fetching subscription:', error);
     return NextResponse.json(
       { error: 'Failed to fetch subscription' },
       { status: 500 }
@@ -49,10 +49,10 @@ export async function GET(
  */
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const existingSubscription = await prisma.subscription.findUnique({
       where: { id },
@@ -104,7 +104,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error(`Error cancelling subscription ${params.id}:`, error);
+    console.error('Error cancelling subscription:', error);
     return NextResponse.json(
       { error: 'Failed to cancel subscription' },
       { status: 500 }
