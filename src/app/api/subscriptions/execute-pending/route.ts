@@ -185,11 +185,13 @@ export async function POST(request: NextRequest) {
               },
             });
 
-            // サブスクのcurrentCycleを更新
+            // サブスクのcurrentCycleを更新（incrementで安全にインクリメント）
             const updatedSubscription = await tx.subscription.update({
               where: { id: subscription.id },
               data: {
-                currentCycle: subscription.currentCycle + 1,
+                currentCycle: {
+                  increment: 1,
+                },
               },
             });
 
@@ -237,22 +239,38 @@ export async function POST(request: NextRequest) {
 
           console.log(`決済完了: ${payment.id}`);
         } else {
-          throw new Error('Transaction failed');
+          // トランザクションは送信されたがfailed（nonceは消費済み）
+          await prisma.subscriptionPayment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'failed',
+              txHash: hash,
+              errorMessage: 'Transaction reverted on-chain',
+            },
+          });
+
+          results.push({
+            paymentId: payment.id,
+            status: 'failed',
+            error: 'Transaction reverted',
+          });
+
+          console.log(`決済失敗（on-chain revert）: ${payment.id}`);
         }
       } catch (error) {
         console.error(`決済失敗: ${payment.id}`, error);
 
-        // 失敗: リトライカウントを増やす
-        const newRetryCount = payment.retryCount + 1;
-        const maxRetries = 3;
+        // トランザクション送信後のエラーはnonceが消費されている可能性があるため
+        // 安全のため、基本的にリトライせずfailedにする
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
 
         await prisma.subscriptionPayment.update({
           where: { id: payment.id },
           data: {
-            status: newRetryCount >= maxRetries ? 'failed' : 'pending',
-            errorMessage:
-              error instanceof Error ? error.message : 'Unknown error',
-            retryCount: newRetryCount,
+            status: 'failed',
+            errorMessage,
+            retryCount: payment.retryCount + 1,
           },
         });
 
