@@ -75,7 +75,9 @@ export default function SubscriptionDetailPage() {
     },
     onSuccess: () => {
       // キャッシュを更新
-      queryClient.invalidateQueries({ queryKey: ['subscription', subscriptionId] });
+      queryClient.invalidateQueries({
+        queryKey: ['subscription', subscriptionId],
+      });
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       setShowCancelDialog(false);
       alert('サブスクリプションをキャンセルしました');
@@ -168,7 +170,10 @@ export default function SubscriptionDetailPage() {
         <div className="max-w-4xl mx-auto">
           <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-800 mb-4">
-              エラーが発生しました: {error ? (error as Error).message : 'サブスクリプションが見つかりません'}
+              エラーが発生しました:{' '}
+              {error
+                ? (error as Error).message
+                : 'サブスクリプションが見つかりません'}
             </p>
             <Link
               href="/subscriptions"
@@ -195,7 +200,9 @@ export default function SubscriptionDetailPage() {
           </Link>
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-3xl font-bold mb-2">{subscription.planName}</h1>
+              <h1 className="text-3xl font-bold mb-2">
+                {subscription.planName}
+              </h1>
               <p className="text-gray-600">
                 {Number(subscription.amount).toLocaleString()} JPYC / 月
               </p>
@@ -249,11 +256,15 @@ export default function SubscriptionDetailPage() {
             )}
             <div>
               <p className="text-sm text-gray-500">顧客アドレス</p>
-              <p className="font-mono text-xs">{subscription.customerAddress}</p>
+              <p className="font-mono text-xs">
+                {subscription.customerAddress}
+              </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">販売店アドレス</p>
-              <p className="font-mono text-xs">{subscription.merchantAddress}</p>
+              <p className="font-mono text-xs">
+                {subscription.merchantAddress}
+              </p>
             </div>
           </div>
         </div>
@@ -359,7 +370,9 @@ export default function SubscriptionDetailPage() {
                   type="button"
                   disabled={cancelMutation.isPending}
                 >
-                  {cancelMutation.isPending ? 'キャンセル中...' : 'キャンセルする'}
+                  {cancelMutation.isPending
+                    ? 'キャンセル中...'
+                    : 'キャンセルする'}
                 </button>
               </div>
             </div>

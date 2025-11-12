@@ -13,7 +13,7 @@ import { sepolia } from 'viem/chains';
 import { fromUnixTime, isAfter } from 'date-fns';
 
 /**
- * POST /api/subscriptions/execute-pending
+ * GET /api/subscriptions/execute-pending
  *
  * 決済予定日が来たpendingの支払いを実行する（Cronから呼ばれる）
  *
@@ -23,7 +23,7 @@ import { fromUnixTime, isAfter } from 'date-fns';
  * 3. 成功したら status = completed に更新
  * 4. 失敗したら status = failed に更新（リトライカウントも増やす）
  */
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // 認証チェック（Cronからのリクエストのみ許可）
     const authHeader = request.headers.get('authorization');
