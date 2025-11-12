@@ -19,6 +19,7 @@ model Subscription {
   merchantAddress String              // 加盟店のウォレットアドレス
   planName        String              // プラン名 (例: "ベーシックプラン")
   amount          Decimal             // 月額料金 (JPYC単位)
+  totalAmount     Decimal             // 合計金額 (月額 × 契約月数)
   billingCycle    BillingCycle        // 課金サイクル
   status          SubscriptionStatus  // サブスクの状態
   startDate       DateTime            // 開始日
@@ -26,6 +27,13 @@ model Subscription {
   endDate         DateTime?           // 終了日 (キャンセル時)
   totalMonths     Int                 // 契約月数
   currentCycle    Int                 @default(0) // 現在の請求サイクル (0から開始)
+
+  // EIP-2612 Permit署名（1つだけ）
+  permitDeadline BigInt              // Permitの有効期限
+  permitV        Int                 // ECDSA署名のv
+  permitR        String              // ECDSA署名のr
+  permitS        String              // ECDSA署名のs
+  permitExecuted Boolean             @default(false) // permit()実行済みフラグ
 
   // リレーション
   payments SubscriptionPayment[]
@@ -60,16 +68,6 @@ model SubscriptionPayment {
   subscriptionId String // 親のサブスクリプションID
   subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
-  // EIP-3009パラメータ
-  nonce       String @unique // bytes32のHex文字列
-  validAfter  BigInt // Unix timestamp
-  validBefore BigInt // Unix timestamp
-
-  // 署名データ (EIP-712)
-  signatureV Int
-  signatureR String // Hex文字列
-  signatureS String // Hex文字列
-
   // 支払い情報
   amount        Decimal                   // 支払い額 (JPYC単位)
   cycleNumber   Int                       // 何回目の支払いか (1, 2, 3, ...)
@@ -87,7 +85,6 @@ model SubscriptionPayment {
 
   @@index([subscriptionId])
   @@index([status, scheduledDate]) // 実行待ちの支払いを検索
-  @@index([nonce]) // nonce検索の高速化
 }
 
 enum SubscriptionPaymentStatus {
