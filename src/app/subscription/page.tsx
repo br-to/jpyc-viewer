@@ -3,21 +3,20 @@
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useSignTransferAuthorization } from '@/hooks/useSignTransferAuthorization';
-import { parseUnits, type Hex } from 'viem';
+import { useSignPermit } from '@/hooks/useSignPermit';
+import { parseUnits } from 'viem';
 
 export default function SubscriptionPage() {
   // ウォレット接続状態
   const { address, isConnected } = useAccount();
 
-  // 署名生成フック
-  const { signTransferAuthorization } = useSignTransferAuthorization();
+  // Permit署名生成フック（1回の署名だけ！）
+  const { signPermit, isLoading: isSignLoading } = useSignPermit();
 
   // 状態管理: ユーザーが選択した内容を保持
   const [selectedPlan, setSelectedPlan] = useState('basic'); // どのプランか
   const [selectedMonths, setSelectedMonths] = useState(3); // 何ヶ月契約か
   const [isProcessing, setIsProcessing] = useState(false); // 処理中かどうか
-  const [currentStep, setCurrentStep] = useState(0); // 現在何回目の署名か
 
   // プランごとの金額（後でDBから取得する想定だけど、今はハードコード）
   const planPrices: Record<string, number> = {
@@ -38,56 +37,24 @@ export default function SubscriptionPage() {
     }
 
     setIsProcessing(true);
-    setCurrentStep(0);
 
     try {
-      const merchantAddress = '0xE7d037165080025Aa3A8747890f7a3B5cA32709D'; // テスト用アドレス（40文字）
+      const merchantAddress = process.env
+        .MERCHANT_WALLET_ADDRESS as `0x${string}`;
 
-      // 1. バックエンドから複数月分のnonceを取得
-      console.log('nonceを取得中...');
-      const nonceResponse = await fetch('/api/subscriptions/nonces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerAddress: address,
-          months: selectedMonths,
-        }),
+      // 1. 1回だけPermit署名を生成（合計金額分を承認）
+      // deadline: 契約期間 + 1ヶ月程度（セキュリティ対策）
+      const now = Math.floor(Date.now() / 1000);
+      const deadlineSeconds = (selectedMonths + 1) * 30 * 24 * 60 * 60; // 契約月数 + 1ヶ月
+      const deadline = BigInt(now + deadlineSeconds);
+
+      const permitSignature = await signPermit({
+        spender: merchantAddress as `0x${string}`,
+        value: parseUnits(totalAmount.toString(), 18), // 合計金額
+        deadline,
       });
 
-      if (!nonceResponse.ok) {
-        throw new Error('nonce生成に失敗しました');
-      }
-
-      const { nonces } = await nonceResponse.json();
-      console.log('取得したnonces:', nonces);
-
-      // 2. 各nonceに対して署名を生成
-      const signatures = [];
-
-      for (let i = 0; i < nonces.length; i++) {
-        setCurrentStep(i + 1); // 進捗表示用
-        const nonceData = nonces[i];
-
-        console.log(`署名 ${i + 1}/${selectedMonths}:`, nonceData);
-
-        // 署名生成（MetaMaskが立ち上がる）
-        const signature = await signTransferAuthorization({
-          nonce: nonceData.nonce as Hex,
-          to: merchantAddress,
-          value: parseUnits(monthlyAmount.toString(), 18), // JPYC単位 → wei
-          validAfter: nonceData.validAfter,
-          validBefore: nonceData.validBefore,
-        });
-
-        signatures.push({
-          ...nonceData,
-          ...signature,
-        });
-      }
-
-      console.log('すべての署名完了:', signatures);
-
-      // 3. バックエンドに署名を送信してDB保存
+      // 2. バックエンドに送信してDB保存
       console.log('サブスクリプションを作成中...');
       const createResponse = await fetch('/api/subscriptions', {
         method: 'POST',
@@ -97,14 +64,23 @@ export default function SubscriptionPage() {
           merchantAddress,
           planName: selectedPlan,
           amount: monthlyAmount,
+          totalAmount,
           billingCycle: 'monthly',
           totalMonths: selectedMonths,
-          signatures,
+          permitSignature: {
+            deadline: permitSignature.deadline.toString(),
+            v: permitSignature.v,
+            r: permitSignature.r,
+            s: permitSignature.s,
+          },
         }),
       });
 
       if (!createResponse.ok) {
-        throw new Error('サブスクリプション作成に失敗しました');
+        const errorData = await createResponse.json();
+        throw new Error(
+          errorData.error || 'サブスクリプション作成に失敗しました'
+        );
       }
 
       const result = await createResponse.json();
@@ -120,7 +96,6 @@ export default function SubscriptionPage() {
       );
     } finally {
       setIsProcessing(false);
-      setCurrentStep(0);
     }
   };
 
@@ -190,9 +165,7 @@ export default function SubscriptionPage() {
         {/* 進捗表示 */}
         {isProcessing && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-semibold mb-2">
-              署名中... ({currentStep}/{selectedMonths})
-            </p>
+            <p className="text-sm font-semibold mb-2">処理中...</p>
             <p className="text-xs text-gray-600">
               MetaMaskで署名を承認してください
             </p>
@@ -202,17 +175,12 @@ export default function SubscriptionPage() {
         {/* 申込ボタン */}
         <button
           onClick={handleSubscribe}
-          disabled={!isConnected || isProcessing}
+          disabled={!isConnected || isProcessing || isSignLoading}
           className="w-full p-4 bg-blue-600 text-white rounded-lg font-semibold cursor-pointer hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           type="button"
         >
-          {isProcessing ? '処理中...' : '申し込む'}
+          {isProcessing || isSignLoading ? '処理中...' : '申し込む'}
         </button>
-
-        {/* 注意書き */}
-        <p className="mt-4 text-sm text-gray-600 text-center">
-          ※ {selectedMonths}回の署名が必要です（気持ち悪いですが...）
-        </p>
       </div>
     </div>
   );
