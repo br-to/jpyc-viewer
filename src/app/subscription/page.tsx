@@ -39,8 +39,16 @@ export default function SubscriptionPage() {
     setIsProcessing(true);
 
     try {
-      const merchantAddress = process.env
-        .MERCHANT_WALLET_ADDRESS as `0x${string}`;
+      // 設定情報を取得（リレイヤーアドレス、マーチャントアドレス）
+      const configResponse = await fetch('/api/config');
+      if (!configResponse.ok) {
+        throw new Error('Failed to get config');
+      }
+      const { relayerAddress, merchantAddress } = await configResponse.json();
+
+      if (!relayerAddress || !merchantAddress) {
+        throw new Error('Config is incomplete');
+      }
 
       // 1. 1回だけPermit署名を生成（合計金額分を承認）
       // deadline: 契約期間 + 1ヶ月程度（セキュリティ対策）
@@ -48,14 +56,17 @@ export default function SubscriptionPage() {
       const deadlineSeconds = (selectedMonths + 1) * 30 * 24 * 60 * 60; // 契約月数 + 1ヶ月
       const deadline = BigInt(now + deadlineSeconds);
 
+      // EIP-2612のPermitではvalueはuint256（wei単位）で指定される
+      // フロントエンドでwei単位で署名し、バックエンドでも同じ値を使用する必要がある
+      // ただし、JPYC SDK Coreのpermit()はJPYC単位を受け取り、内部でwei単位に変換する
+      // したがって、フロントエンドでwei単位で署名し、バックエンドでJPYC単位に戻して渡す
       const permitSignature = await signPermit({
-        spender: merchantAddress as `0x${string}`,
-        value: parseUnits(totalAmount.toString(), 18), // 合計金額
+        spender: relayerAddress as `0x${string}`, // リレイヤーアドレス（署名に必要）
+        value: parseUnits(totalAmount.toString(), 18), // 合計金額（wei単位）
         deadline,
       });
 
       // 2. バックエンドに送信してDB保存
-      console.log('サブスクリプションを作成中...');
       const createResponse = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -150,10 +150,15 @@ export async function GET(request: NextRequest) {
         if (payment.cycleNumber === 1 && !subscription.permitExecuted) {
           console.log(`permit() 実行中: ${subscription.id}`);
 
+          // spenderはリレイヤー（バックエンドウォレット）のアドレスである必要がある
+          // transferFrom()を実行するのはリレイヤーなので、リレイヤーにallowanceを付与する
+          // フロントエンドでwei単位で署名しているので、バックエンドでもwei単位に変換する必要がある
+          // ただし、JPYC SDK Coreのpermit()はJPYC単位を受け取り、内部でwei単位に変換する
+          // したがって、JPYC単位で渡すのが正しい
           const permitHash = await jpyc.permit({
             owner: subscription.customerAddress as Address,
-            spender: subscription.merchantAddress as Address,
-            value: Number(subscription.totalAmount.toString()), // JPYC単位
+            spender: account.address, // リレイヤーのアドレス
+            value: Number(subscription.totalAmount.toString()), // JPYC単位（SDKが内部でwei単位に変換）
             deadline: Uint256.from(subscription.permitDeadline.toString()),
             v: Uint8.from(subscription.permitV.toString()),
             r: subscription.permitR as Hex,
