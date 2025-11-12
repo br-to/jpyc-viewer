@@ -13,21 +13,15 @@ import { prisma } from '@/lib/prisma';
  *   merchantAddress: string;
  *   planName: string;
  *   amount: number;  // 月額料金（JPYC単位）
+ *   totalAmount: number;  // 合計金額（JPYC単位）
  *   billingCycle: 'monthly' | 'quarterly' | 'yearly';
  *   totalMonths: number;
- *   signatures: [
- *     {
- *       nonce: string;
- *       validAfter: number;
- *       validBefore: number;
- *       v: number;        // ECDSA署名のv
- *       r: string;        // ECDSA署名のr
- *       s: string;        // ECDSA署名のs
- *       cycleNumber: number;
- *       scheduledDate: string;
- *     },
- *     ...
- *   ]
+ *   permitSignature: {
+ *     deadline: string;  // BigInt文字列
+ *     v: number;         // ECDSA署名のv
+ *     r: string;         // ECDSA署名のr
+ *     s: string;         // ECDSA署名のs
+ *   }
  * }
  */
 export async function POST(request: NextRequest) {
@@ -38,9 +32,10 @@ export async function POST(request: NextRequest) {
       merchantAddress,
       planName,
       amount,
+      totalAmount,
       billingCycle,
       totalMonths,
-      signatures,
+      permitSignature,
     } = body;
 
     // バリデーション
@@ -49,9 +44,10 @@ export async function POST(request: NextRequest) {
       !merchantAddress ||
       !planName ||
       !amount ||
+      !totalAmount ||
       !billingCycle ||
       !totalMonths ||
-      !signatures
+      !permitSignature
     ) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -59,9 +55,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Array.isArray(signatures) || signatures.length !== totalMonths) {
+    if (
+      !permitSignature.deadline ||
+      permitSignature.v === undefined ||
+      !permitSignature.r ||
+      !permitSignature.s
+    ) {
       return NextResponse.json(
-        { error: `signatures must be an array of length ${totalMonths}` },
+        { error: 'Invalid permit signature' },
         { status: 400 }
       );
     }
@@ -69,36 +70,47 @@ export async function POST(request: NextRequest) {
     // トランザクションでサブスクリプションと支払いを一括作成
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subscription = await prisma.$transaction(async (tx: any) => {
-      // 1. Subscriptionレコード作成
+      // 最初の決済日を計算（申込日の1ヶ月後）
+      const firstBillingDate = new Date();
+      firstBillingDate.setMonth(firstBillingDate.getMonth() + 1);
+
+      // 1. Subscriptionレコード作成（Permit署名を保存）
       const newSubscription = await tx.subscription.create({
         data: {
           customerAddress,
           merchantAddress,
           planName,
           amount,
+          totalAmount,
           billingCycle,
           status: 'active',
           startDate: new Date(),
-          nextBillingDate: new Date(signatures[0].scheduledDate), // 最初の決済日
+          nextBillingDate: firstBillingDate,
           totalMonths,
           currentCycle: 0, // まだ決済していない
+          // EIP-2612 Permit署名（1つだけ）
+          permitDeadline: BigInt(permitSignature.deadline),
+          permitV: permitSignature.v,
+          permitR: permitSignature.r,
+          permitS: permitSignature.s,
+          permitExecuted: false,
         },
       });
 
-      // 2. 各署名をSubscriptionPaymentレコードとして保存
-      const paymentData = signatures.map((sig) => ({
-        subscriptionId: newSubscription.id,
-        nonce: sig.nonce,
-        validAfter: BigInt(sig.validAfter),
-        validBefore: BigInt(sig.validBefore),
-        signatureV: sig.v,
-        signatureR: sig.r,
-        signatureS: sig.s,
-        amount,
-        cycleNumber: sig.cycleNumber,
-        scheduledDate: new Date(sig.scheduledDate),
-        status: 'pending', // 初期状態は「保留中」
-      }));
+      // 2. 各月の支払いレコードを作成（シンプル化、署名情報は不要）
+      const paymentData = [];
+      for (let i = 0; i < totalMonths; i++) {
+        const scheduledDate = new Date();
+        scheduledDate.setMonth(scheduledDate.getMonth() + i + 1);
+
+        paymentData.push({
+          subscriptionId: newSubscription.id,
+          amount,
+          cycleNumber: i + 1,
+          scheduledDate,
+          status: 'pending', // 初期状態は「保留中」
+        });
+      }
 
       await tx.subscriptionPayment.createMany({
         data: paymentData,
