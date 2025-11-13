@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { addMonths } from 'date-fns';
 
 /**
  * POST /api/subscriptions
@@ -71,8 +72,8 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subscription = await prisma.$transaction(async (tx: any) => {
       // 最初の決済日を計算（申込日の1ヶ月後）
-      const firstBillingDate = new Date();
-      firstBillingDate.setMonth(firstBillingDate.getMonth() + 1);
+      const baseDate = new Date();
+      const firstBillingDate = addMonths(baseDate, 1);
 
       // 1. Subscriptionレコード作成（Permit署名を保存）
       const newSubscription = await tx.subscription.create({
@@ -99,16 +100,16 @@ export async function POST(request: NextRequest) {
 
       // 2. 各月の支払いレコードを作成（シンプル化、署名情報は不要）
       const paymentData = [];
+      // ベース日付を一度だけ作成して、すべての支払いが同じ時点を基準にスケジュールされるようにする
       for (let i = 0; i < totalMonths; i++) {
-        const scheduledDate = new Date();
-        scheduledDate.setMonth(scheduledDate.getMonth() + i + 1);
+        const scheduledDate = addMonths(baseDate, i + 1);
 
         paymentData.push({
           subscriptionId: newSubscription.id,
           amount,
           cycleNumber: i + 1,
           scheduledDate,
-          status: 'pending', // 初期状態は「保留中」
+          status: 'pending',
         });
       }
 
