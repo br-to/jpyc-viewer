@@ -10,18 +10,20 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
-import { fromUnixTime, isAfter } from 'date-fns';
+import { JPYC } from '@jpyc/sdk-core';
+import { Uint256, Uint8 } from 'soltypes';
 
 /**
  * GET /api/subscriptions/execute-pending
  *
  * 決済予定日が来たpendingの支払いを実行する（Cronから呼ばれる）
  *
- * 処理フロー:
+ * 処理フロー（EIP-2612 Permit版）:
  * 1. 実行対象の支払いを取得（scheduledDate が過去 & status = pending）
- * 2. 各支払いに対して transferWithAuthorization を実行
- * 3. 成功したら status = completed に更新
- * 4. 失敗したら status = failed に更新（リトライカウントも増やす）
+ * 2. 初回（cycleNumber = 1）の場合、permit() を実行
+ * 3. transferFrom() でJPYCを送金
+ * 4. 成功したら status = completed に更新
+ * 5. 失敗したら status = failed に更新（リトライカウントも増やす）
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,11 +36,10 @@ export async function GET(request: NextRequest) {
     console.log('=== Cron実行開始 ===');
 
     // 1. 実行対象の支払いを取得（バッチ処理: 最大100件）
-    // 並行実行防止: processingステータスを付けて、他のインスタンスが処理しないようにする
     const now = new Date();
     const BATCH_SIZE = 100;
 
-    // まずpendingのIDだけを取得してロック
+    // pendingのIDだけを取得してロック
     // processingのまま1時間以上経過したものも回復対象に含める
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
           },
           {
             status: 'processing',
-            updatedAt: { lte: oneHourAgo }, // 1時間以上前にprocessingになったもの
+            updatedAt: { lte: oneHourAgo },
           },
         ],
       },
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ロック: pending/古いprocessing → processing に一括更新（並行実行防止）
+    // ロック: pending/古いprocessing → processing に一括更新
     const idList = pendingIds.map((p: { id: string }) => p.id);
 
     await prisma.subscriptionPayment.updateMany({
@@ -84,11 +85,11 @@ export async function GET(request: NextRequest) {
       data: { status: 'processing' },
     });
 
-    // 実際に更新されたpaymentを取得（他のインスタンスが先に処理した場合は除外される）
+    // 実際に更新されたpaymentを取得
     const pendingPayments = await prisma.subscriptionPayment.findMany({
       where: {
         id: { in: idList },
-        status: 'processing', // processingになったものだけ
+        status: 'processing',
       },
       include: {
         subscription: true,
@@ -97,8 +98,6 @@ export async function GET(request: NextRequest) {
         scheduledDate: 'asc',
       },
     });
-
-    console.log(`実行対象の支払い（ロック済み）: ${pendingPayments.length}件`);
 
     // 2. Relayerウォレットの準備
     const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY;
@@ -119,29 +118,7 @@ export async function GET(request: NextRequest) {
       transport: http(),
     });
 
-    // JPYC Prepaid (Sepolia testnet)
-    const jpycAddress = '0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB' as Address;
-
-    // JPYCコントラクトのABI（transferWithAuthorizationのみ）
-    const jpycAbi = [
-      {
-        inputs: [
-          { name: 'from', type: 'address' },
-          { name: 'to', type: 'address' },
-          { name: 'value', type: 'uint256' },
-          { name: 'validAfter', type: 'uint256' },
-          { name: 'validBefore', type: 'uint256' },
-          { name: 'nonce', type: 'bytes32' },
-          { name: 'v', type: 'uint8' },
-          { name: 'r', type: 'bytes32' },
-          { name: 's', type: 'bytes32' },
-        ],
-        name: 'transferWithAuthorization',
-        outputs: [],
-        stateMutability: 'nonpayable',
-        type: 'function',
-      },
-    ] as const;
+    const jpyc = new JPYC({ client: walletClient });
 
     // 3. 各支払いを実行
     const results = [];
@@ -164,44 +141,60 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // validBefore をチェック（3日過ぎていたらスキップ）
-      const validBeforeDate = fromUnixTime(Number(payment.validBefore));
-      if (isAfter(now, validBeforeDate)) {
-        console.log(`スキップ: validBefore過ぎ (${payment.id})`);
-        await prisma.subscriptionPayment.update({
-          where: { id: payment.id },
-          data: {
-            status: 'failed',
-            errorMessage: 'validBefore expired',
-          },
-        });
-        continue;
-      }
-
       try {
         console.log(
-          `決済実行中: ${payment.id} (${subscription.customerAddress} → ${subscription.merchantAddress})`
+          `決済実行中: ${payment.id} (${subscription.customerAddress} → ${subscription.merchantAddress}), cycle ${payment.cycleNumber}`
         );
 
-        // transferWithAuthorization を実行
-        const hash = await walletClient.writeContract({
-          address: jpycAddress,
-          abi: jpycAbi,
-          functionName: 'transferWithAuthorization',
-          args: [
-            subscription.customerAddress as Address,
-            subscription.merchantAddress as Address,
-            BigInt(payment.amount.toString()) * BigInt(10 ** 18), // JPYC単位 → wei
-            BigInt(payment.validAfter.toString()),
-            BigInt(payment.validBefore.toString()),
-            payment.nonce as Hex,
-            payment.signatureV,
-            payment.signatureR as Hex,
-            payment.signatureS as Hex,
-          ],
+        // 初回（cycleNumber = 1）の場合、permit() を実行
+        if (payment.cycleNumber === 1 && !subscription.permitExecuted) {
+          console.log(`permit() 実行中: ${subscription.id}`);
+
+          // spenderはリレイヤー（バックエンドウォレット）のアドレスである必要がある
+          // transferFrom()を実行するのはリレイヤーなので、リレイヤーにallowanceを付与する
+          // フロントエンドでwei単位で署名しているので、バックエンドでもwei単位に変換する必要がある
+          // ただし、JPYC SDK Coreのpermit()はJPYC単位を受け取り、内部でwei単位に変換する
+          // したがって、JPYC単位で渡すのが正しい
+          const permitHash = await jpyc.permit({
+            owner: subscription.customerAddress as Address,
+            spender: account.address, // リレイヤーのアドレス
+            value: Number(subscription.totalAmount.toString()), // JPYC単位（SDKが内部でwei単位に変換）
+            deadline: Uint256.from(subscription.permitDeadline.toString()),
+            v: Uint8.from(subscription.permitV.toString()),
+            r: subscription.permitR as Hex,
+            s: subscription.permitS as Hex,
+          });
+
+          console.log(`permit() トランザクション送信: ${permitHash}`);
+
+          // permit()の完了を待つ
+          const permitReceipt = await publicClient.waitForTransactionReceipt({
+            hash: permitHash,
+          });
+
+          if (permitReceipt.status !== 'success') {
+            throw new Error('permit() failed on-chain');
+          }
+
+          // permitExecuted フラグを立てる
+          await prisma.subscription.update({
+            where: { id: subscription.id },
+            data: { permitExecuted: true },
+          });
+
+          console.log(`permit() 完了: ${permitHash}`);
+        }
+
+        // transferFrom() を実行
+        console.log(`transferFrom() 実行中: ${payment.id}`);
+
+        const hash = await jpyc.transferFrom({
+          from: subscription.customerAddress as Address,
+          to: subscription.merchantAddress as Address,
+          value: Number(payment.amount.toString()), // JPYC単位
         });
 
-        console.log(`トランザクション送信: ${hash}`);
+        console.log(`transferFrom() トランザクション送信: ${hash}`);
 
         // トランザクションの完了を待つ
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -219,7 +212,7 @@ export async function GET(request: NextRequest) {
               },
             });
 
-            // サブスクのcurrentCycleを更新（incrementで安全にインクリメント）
+            // サブスクのcurrentCycleを更新
             const updatedSubscription = await tx.subscription.update({
               where: { id: subscription.id },
               data: {
@@ -243,7 +236,7 @@ export async function GET(request: NextRequest) {
               });
               console.log(`サブスク完了: ${subscription.id}`);
             } else {
-              // 次回決済日を更新（次のpending支払いの日付）
+              // 次回決済日を更新
               const nextPayment = await tx.subscriptionPayment.findFirst({
                 where: {
                   subscriptionId: subscription.id,
@@ -273,7 +266,7 @@ export async function GET(request: NextRequest) {
 
           console.log(`決済完了: ${payment.id}`);
         } else {
-          // トランザクションは送信されたがfailed（nonceは消費済み）
+          // トランザクションは送信されたがfailed
           await prisma.subscriptionPayment.update({
             where: { id: payment.id },
             data: {
@@ -294,8 +287,6 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error(`決済失敗: ${payment.id}`, error);
 
-        // トランザクション送信後のエラーはnonceが消費されている可能性があるため
-        // 安全のため、基本的にリトライせずfailedにする
         const errorMessage =
           error instanceof Error ? error.message : 'Unknown error';
 
@@ -320,7 +311,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Pending payments processed',
+      message: 'Pending payments processed (Permit version)',
       total: pendingPayments.length,
       results,
     });
