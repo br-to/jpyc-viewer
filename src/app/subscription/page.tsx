@@ -51,9 +51,12 @@ export default function SubscriptionPage() {
       }
 
       // 1. 1回だけPermit署名を生成（合計金額分を承認）
-      // deadline: 契約期間 + 1ヶ月程度（セキュリティ対策）
+      // deadline: 契約期間 + 3日のバッファ
       const now = Math.floor(Date.now() / 1000);
-      const deadlineSeconds = (selectedMonths + 1) * 30 * 24 * 60 * 60; // 契約月数 + 1ヶ月
+      const contractDurationSeconds = selectedMonths * 30 * 24 * 60 * 60; // 契約期間（秒）
+      const bufferDays = 3; // 3日のバッファ
+      const bufferSeconds = bufferDays * 24 * 60 * 60;
+      const deadlineSeconds = contractDurationSeconds + bufferSeconds;
       const deadline = BigInt(now + deadlineSeconds);
 
       // EIP-2612のPermitではvalueはuint256（wei単位）で指定される
