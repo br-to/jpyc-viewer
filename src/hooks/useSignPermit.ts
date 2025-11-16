@@ -70,7 +70,7 @@ export function useSignPermit() {
       // EIP-2612のTypedDataを構築
       const domain = {
         name: 'JPY Coin',
-        version: '2', // JPYCのversionは'2'
+        version: '1', // JPYCのversionは'1'
         chainId,
         verifyingContract: jpycAddress,
       };
