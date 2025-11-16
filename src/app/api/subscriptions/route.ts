@@ -2,6 +2,17 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { addMonths } from 'date-fns';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  type Address,
+  type Hex,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { sepolia } from 'viem/chains';
+import { JPYC } from '@jpyc/sdk-core';
+import { Uint256, Uint8 } from 'soltypes';
 
 /**
  * POST /api/subscriptions
@@ -68,6 +79,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // リレイヤー（バックエンドウォレット）の設定
+    const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY;
+    if (!relayerPrivateKey) {
+      throw new Error('RELAYER_PRIVATE_KEY is not set');
+    }
+
+    const account = privateKeyToAccount(relayerPrivateKey as `0x${string}`);
+    const publicClient = createPublicClient({
+      chain: sepolia,
+      transport: http(),
+    });
+    const walletClient = createWalletClient({
+      account,
+      chain: sepolia,
+      transport: http(),
+    });
+
+    const jpyc = new JPYC({
+      client: walletClient,
+    });
+
     // トランザクションでサブスクリプションと支払いを一括作成
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subscription = await prisma.$transaction(async (tx: any) => {
@@ -94,7 +126,7 @@ export async function POST(request: NextRequest) {
           permitV: permitSignature.v,
           permitR: permitSignature.r,
           permitS: permitSignature.s,
-          permitExecuted: false,
+          permitExecuted: false, // 後でpermit()実行後にtrueに更新
         },
       });
 
@@ -119,6 +151,53 @@ export async function POST(request: NextRequest) {
 
       return newSubscription;
     });
+
+    // 3. permit()を実行してallowanceを設定
+    try {
+      console.log(`permit() 実行中: ${subscription.id}`);
+
+      const permitHash = await jpyc.permit({
+        owner: customerAddress as Address,
+        spender: account.address, // リレイヤーのアドレス
+        value: Number(totalAmount), // JPYC単位（SDKが内部でwei単位に変換）
+        deadline: Uint256.from(permitSignature.deadline.toString()),
+        v: Uint8.from(permitSignature.v.toString()),
+        r: permitSignature.r as Hex,
+        s: permitSignature.s as Hex,
+      });
+
+      console.log(`permit() トランザクション送信: ${permitHash}`);
+
+      // permit()の完了を待つ
+      const permitReceipt = await publicClient.waitForTransactionReceipt({
+        hash: permitHash,
+      });
+
+      if (permitReceipt.status !== 'success') {
+        throw new Error('permit() failed on-chain');
+      }
+
+      // permitExecuted フラグを立てる
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { permitExecuted: true } as any,
+      });
+
+      console.log(`permit() 完了: ${permitHash}`);
+    } catch (error) {
+      console.error('Error executing permit:', error);
+      // permit()が失敗した場合、サブスクリプションを削除するか、エラーを返す
+      // ここではエラーを返す（DBには保存されているが、permitが失敗）
+      await prisma.subscription.delete({
+        where: { id: subscription.id },
+      });
+      return NextResponse.json(
+        { error: 'Failed to execute permit on-chain' },
+        { status: 500 }
+      );
+    }
 
     console.log('サブスクリプション作成完了:', subscription.id);
 
