@@ -7,6 +7,7 @@ import { useSignPermit } from '@/hooks/useSignPermit';
 import { parseUnits } from 'viem';
 import { TransactionLoading } from '@/components/TransactionLoading';
 import Link from 'next/link';
+import { addMonths } from 'date-fns';
 
 export default function SubscriptionPage() {
   // ウォレット接続状態
@@ -56,13 +57,16 @@ export default function SubscriptionPage() {
 
       // 1. 1回だけPermit署名を生成（合計金額分を承認）
       setLoadingStep('署名を生成中...');
-      // deadline: 契約期間 + 3日のバッファ
-      const now = Math.floor(Date.now() / 1000);
-      const contractDurationSeconds = selectedMonths * 30 * 24 * 60 * 60; // 契約期間（秒）
-      const bufferDays = 3; // 3日のバッファ
-      const bufferSeconds = bufferDays * 24 * 60 * 60;
-      const deadlineSeconds = contractDurationSeconds + bufferSeconds;
-      const deadline = BigInt(now + deadlineSeconds);
+      // deadline: 契約期間（permitはサブスク登録時に実行されるため、契約期間分あれば十分）
+      // 実際の月の日数を考慮して計算（date-fnsのaddMonthsを使用）
+      const now = new Date();
+      const endDate = addMonths(now, selectedMonths);
+      const contractDurationSeconds = Math.floor(
+        (endDate.getTime() - now.getTime()) / 1000
+      );
+      const deadline = BigInt(
+        Math.floor(Date.now() / 1000) + contractDurationSeconds
+      );
 
       // EIP-2612のPermitではvalueはuint256（wei単位）で指定される
       // フロントエンドでwei単位で署名し、バックエンドでも同じ値を使用する必要がある
