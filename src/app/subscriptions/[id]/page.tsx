@@ -2,8 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { useAccount } from 'wagmi';
+import { useSignPermit } from '@/hooks/useSignPermit';
+import { TransactionLoading } from '@/components/TransactionLoading';
 
 /**
  * サブスクリプション詳細画面
@@ -43,9 +46,11 @@ interface SubscriptionDetail {
 
 export default function SubscriptionDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<string>('');
+  const { address } = useAccount();
+  const { signPermit, isLoading: isSignLoading } = useSignPermit();
 
   const subscriptionId = params.id as string;
 
@@ -64,13 +69,55 @@ export default function SubscriptionDetailPage() {
   // キャンセル処理
   const cancelMutation = useMutation({
     mutationFn: async () => {
+      if (!address) {
+        throw new Error('Wallet not connected');
+      }
+
+      setLoadingStep('設定情報を取得中...');
+      // 設定情報を取得（リレイヤーアドレス）
+      const configResponse = await fetch('/api/config');
+      if (!configResponse.ok) {
+        throw new Error('Failed to get config');
+      }
+      const { relayerAddress } = await configResponse.json();
+
+      if (!relayerAddress) {
+        throw new Error('Relayer address not found');
+      }
+
+      // permit 0の署名を生成
+      setLoadingStep('署名を生成中...');
+      // deadline: 現在時刻 + 1時間（十分な有効期限）
+      const now = Math.floor(Date.now() / 1000);
+      const deadline = BigInt(now + 3600); // 1時間後
+
+      const permitSignature = await signPermit({
+        spender: relayerAddress as `0x${string}`,
+        value: BigInt(0), // 0に設定
+        deadline,
+      });
+
+      // APIに送信
+      setLoadingStep('トランザクションを送信中...');
       const response = await fetch(`/api/subscriptions/${subscriptionId}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          permitSignature: {
+            deadline: permitSignature.deadline.toString(),
+            v: permitSignature.v,
+            r: permitSignature.r,
+            s: permitSignature.s,
+          },
+        }),
       });
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to cancel subscription');
       }
+
+      setLoadingStep('トランザクション確認待ち...');
       return response.json();
     },
     onSuccess: () => {
@@ -80,10 +127,12 @@ export default function SubscriptionDetailPage() {
       });
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       setShowCancelDialog(false);
+      setLoadingStep('');
       alert('サブスクリプションをキャンセルしました');
     },
     onError: (error) => {
       setShowCancelDialog(false);
+      setLoadingStep('');
       const message = (error as Error).message;
       if (message.includes('already cancelled or expired')) {
         alert('このサブスクリプションは既にキャンセル済み、または期限切れです');
@@ -346,7 +395,7 @@ export default function SubscriptionDetailPage() {
         )}
 
         {/* キャンセル確認ダイアログ */}
-        {showCancelDialog && (
+        {showCancelDialog && !cancelMutation.isPending && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
               <h3 className="text-xl font-bold mb-4">キャンセル確認</h3>
@@ -368,15 +417,24 @@ export default function SubscriptionDetailPage() {
                   onClick={() => cancelMutation.mutate()}
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400"
                   type="button"
-                  disabled={cancelMutation.isPending}
+                  disabled={cancelMutation.isPending || isSignLoading}
                 >
-                  {cancelMutation.isPending
+                  {cancelMutation.isPending || isSignLoading
                     ? 'キャンセル中...'
                     : 'キャンセルする'}
                 </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* キャンセル時のローディングオーバーレイ */}
+        {cancelMutation.isPending && (
+          <TransactionLoading
+            title="キャンセル処理中..."
+            step={loadingStep}
+            variant="cancel"
+          />
         )}
       </div>
     </div>

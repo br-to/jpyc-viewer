@@ -5,6 +5,8 @@ import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useSignPermit } from '@/hooks/useSignPermit';
 import { parseUnits } from 'viem';
+import { TransactionLoading } from '@/components/TransactionLoading';
+import Link from 'next/link';
 
 export default function SubscriptionPage() {
   // ウォレット接続状態
@@ -17,6 +19,7 @@ export default function SubscriptionPage() {
   const [selectedPlan, setSelectedPlan] = useState('basic'); // どのプランか
   const [selectedMonths, setSelectedMonths] = useState(3); // 何ヶ月契約か
   const [isProcessing, setIsProcessing] = useState(false); // 処理中かどうか
+  const [loadingStep, setLoadingStep] = useState<string>(''); // 現在の処理ステップ
 
   // プランごとの金額（後でDBから取得する想定だけど、今はハードコード）
   const planPrices: Record<string, number> = {
@@ -37,6 +40,7 @@ export default function SubscriptionPage() {
     }
 
     setIsProcessing(true);
+    setLoadingStep('設定情報を取得中...');
 
     try {
       // 設定情報を取得（リレイヤーアドレス、マーチャントアドレス）
@@ -51,6 +55,7 @@ export default function SubscriptionPage() {
       }
 
       // 1. 1回だけPermit署名を生成（合計金額分を承認）
+      setLoadingStep('署名を生成中...');
       // deadline: 契約期間 + 3日のバッファ
       const now = Math.floor(Date.now() / 1000);
       const contractDurationSeconds = selectedMonths * 30 * 24 * 60 * 60; // 契約期間（秒）
@@ -70,6 +75,7 @@ export default function SubscriptionPage() {
       });
 
       // 2. バックエンドに送信してDB保存
+      setLoadingStep('トランザクションを送信中...');
       const createResponse = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,6 +103,7 @@ export default function SubscriptionPage() {
         );
       }
 
+      setLoadingStep('トランザクション確認待ち...');
       const result = await createResponse.json();
       console.log('サブスクリプション作成完了:', result);
 
@@ -110,12 +117,23 @@ export default function SubscriptionPage() {
       );
     } finally {
       setIsProcessing(false);
+      setLoadingStep('');
     }
   };
 
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-md mx-auto">
+        {/* サブスク一覧へのリンク */}
+        <div className="mb-6">
+          <Link
+            href="/subscriptions"
+            className="text-blue-600 hover:underline inline-flex items-center"
+          >
+            サブスク一覧
+          </Link>
+        </div>
+
         {/* タイトル */}
         <h1 className="text-3xl font-bold mb-8">サブスク申込</h1>
 
@@ -176,15 +194,8 @@ export default function SubscriptionPage() {
           </div>
         </div>
 
-        {/* 進捗表示 */}
-        {isProcessing && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-semibold mb-2">処理中...</p>
-            <p className="text-xs text-gray-600">
-              MetaMaskで署名を承認してください
-            </p>
-          </div>
-        )}
+        {/* ローディングオーバーレイ */}
+        {isProcessing && <TransactionLoading step={loadingStep} />}
 
         {/* 申込ボタン */}
         <button
