@@ -11,7 +11,6 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { JPYC } from '@jpyc/sdk-core';
-import { Uint256, Uint8 } from 'soltypes';
 
 /**
  * GET /api/subscriptions/execute-pending
@@ -20,10 +19,9 @@ import { Uint256, Uint8 } from 'soltypes';
  *
  * 処理フロー（EIP-2612 Permit版）:
  * 1. 実行対象の支払いを取得（scheduledDate が過去 & status = pending）
- * 2. 初回（cycleNumber = 1）の場合、permit() を実行
- * 3. transferFrom() でJPYCを送金
- * 4. 成功したら status = completed に更新
- * 5. 失敗したら status = failed に更新（リトライカウントも増やす）
+ * 2. transferFrom() でJPYCを送金（permit()はサブスク生成時に実行済み）
+ * 3. 成功したら status = completed に更新
+ * 4. 失敗したら status = failed に更新（リトライカウントも増やす）
  */
 export async function GET(request: NextRequest) {
   try {
@@ -146,43 +144,13 @@ export async function GET(request: NextRequest) {
           `決済実行中: ${payment.id} (${subscription.customerAddress} → ${subscription.merchantAddress}), cycle ${payment.cycleNumber}`
         );
 
-        // 初回（cycleNumber = 1）の場合、permit() を実行
-        if (payment.cycleNumber === 1 && !subscription.permitExecuted) {
-          console.log(`permit() 実行中: ${subscription.id}`);
-
-          // spenderはリレイヤー（バックエンドウォレット）のアドレスである必要がある
-          // transferFrom()を実行するのはリレイヤーなので、リレイヤーにallowanceを付与する
-          // フロントエンドでwei単位で署名しているので、バックエンドでもwei単位に変換する必要がある
-          // ただし、JPYC SDK Coreのpermit()はJPYC単位を受け取り、内部でwei単位に変換する
-          // したがって、JPYC単位で渡すのが正しい
-          const permitHash = await jpyc.permit({
-            owner: subscription.customerAddress as Address,
-            spender: account.address, // リレイヤーのアドレス
-            value: Number(subscription.totalAmount.toString()), // JPYC単位（SDKが内部でwei単位に変換）
-            deadline: Uint256.from(subscription.permitDeadline.toString()),
-            v: Uint8.from(subscription.permitV.toString()),
-            r: subscription.permitR as Hex,
-            s: subscription.permitS as Hex,
-          });
-
-          console.log(`permit() トランザクション送信: ${permitHash}`);
-
-          // permit()の完了を待つ
-          const permitReceipt = await publicClient.waitForTransactionReceipt({
-            hash: permitHash,
-          });
-
-          if (permitReceipt.status !== 'success') {
-            throw new Error('permit() failed on-chain');
-          }
-
-          // permitExecuted フラグを立てる
-          await prisma.subscription.update({
-            where: { id: subscription.id },
-            data: { permitExecuted: true },
-          });
-
-          console.log(`permit() 完了: ${permitHash}`);
+        // permit()はサブスク生成時に実行済みである必要がある
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!(subscription as any).permitExecuted) {
+          console.error(
+            `permit()が実行されていません: ${subscription.id}. サブスク生成時にpermit()が失敗した可能性があります。`
+          );
+          throw new Error('permit() not executed for this subscription');
         }
 
         // transferFrom() を実行
